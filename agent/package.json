@@ -1,0 +1,14 @@
+{
+  "name": "cloudrewind-agent",
+  "version": "1.1.0",
+  "description": "Sends host metrics and optional HTTP health checks to a CloudRewind project",
+  "main": "index.js",
+  "bin": { "cloudrewind-agent": "index.js" },
+  "scripts": {
+    "start": "node index.js",
+    "dry-run": "node index.js --dry-run"
+  },
+  "engines": { "node": ">=18" },
+  "license": "ISC",
+  "private": true
+}

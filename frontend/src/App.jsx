@@ -1,224 +1,133 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ReferenceLine,
-  ResponsiveContainer,
-} from "recharts";
+import { BrowserRouter, Routes, Route, Navigate, Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { AuthProvider } from "./AuthContext";
+import { useAuth } from "./useAuth";
+import AuthPage from "./AuthPage";
+import Projects from "./Projects";
+import Dashboard from "./Dashboard";
+import Docs from "./Docs";
+import WorkspacePage from "./WorkspacePage";
+import InvitePage from "./InvitePage";
+import ProfilePage from "./ProfilePage";
+import { WorkspaceProvider } from "./WorkspaceContext";
+import { useWorkspace } from "./useWorkspace";
 
-const API = "http://localhost:5000";
-const HISTORY = 360; // 360 snapshots = 30 minutes at 5s intervals
+// Only lets logged-in users through; everyone else goes to /login
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <p className="p-6 text-slate-400">Loading...</p>;
+  return user ? children : <Navigate to="/login" replace state={{ from: location }} />;
+}
 
-const formatTime = (ts) => new Date(ts).toLocaleTimeString();
+function Header() {
+  const { user, logout } = useAuth();
+  const { workspaces, currentWorkspace, selectWorkspace } = useWorkspace();
+  const navigate = useNavigate();
+  const navClass = ({ isActive }) =>
+      "relative rounded-md px-3 py-2 text-sm font-medium transition after:absolute after:inset-x-3 after:bottom-0 after:h-px after:content-[''] " +
+    (isActive
+      ? "text-lime-200 after:bg-lime-300"
+      : "text-slate-400 after:bg-transparent hover:text-slate-100");
 
-function MetricCard({ label, value, unit, warn }) {
+  const initials = (user?.full_name || user?.email || "CR")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
   return (
-    <div className="rounded-xl bg-slate-800 p-4 border border-slate-700">
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className={`mt-1 text-3xl font-bold ${warn ? "text-red-400" : "text-white"}`}>
-        {value ?? "–"}
-        <span className="text-base font-normal text-slate-400 ml-1">{unit}</span>
-      </p>
-    </div>
+    <header className="sticky top-0 z-40 border-b border-[#30332c] bg-[#11130f]/95 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <Link to="/" className="group flex shrink-0 items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+          <span className="grid size-8 place-items-center border border-lime-300/40 text-lime-200 transition group-hover:bg-lime-300/10" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3.5 11a8.5 8.5 0 1 1 2.2 5.7" />
+              <path d="M3.5 4.5V11H10" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+          </span>
+          <span className="font-semibold tracking-tight text-[#f0eee5]">CloudRewind<span className="ml-1 text-lime-300">/</span></span>
+        </Link>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+          {user && (
+            <>
+              <nav aria-label="Main navigation" className="flex items-center gap-0.5">
+                <NavLink to="/" end className={navClass}>Projects</NavLink>
+                <NavLink to="/workspace" className={navClass}>Team</NavLink>
+              </nav>
+              {workspaces.length > 1 ? (
+                <select
+                  aria-label="Active workspace"
+                  value={currentWorkspace?.id || ""}
+                  onChange={(event) => {
+                    selectWorkspace(event.target.value);
+                    navigate("/");
+                  }}
+                  className="max-w-40 rounded-lg border border-white/10 bg-slate-900 px-2.5 py-2 text-xs text-slate-200 outline-none transition focus:border-cyan-300 sm:max-w-52 sm:text-sm"
+                >
+                  {workspaces.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+                  ))}
+                </select>
+              ) : currentWorkspace ? (
+                <span className="hidden max-w-40 truncate rounded-lg border border-white/10 bg-slate-900/70 px-2.5 py-2 text-xs text-slate-300 sm:block" title={currentWorkspace.name}>
+                  {currentWorkspace.name}
+                </span>
+              ) : null}
+              <NavLink to="/docs" className={navClass}>Docs</NavLink>
+              <span className="mx-1 hidden h-6 w-px bg-[#34372f] sm:block" aria-hidden="true" />
+              <details className="relative">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-1 pl-1 pr-2 text-left outline-none transition hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-lime-300 [&::-webkit-details-marker]:hidden">
+                  <span className="grid size-8 shrink-0 place-items-center bg-lime-300 text-xs font-bold text-[#171a12]">{initials}</span>
+                  <span className="hidden max-w-32 sm:block">
+                    <span className="block truncate text-xs font-medium text-slate-200">{user.full_name || "Account"}</span>
+                    <span className="block text-[10px] text-slate-500">Account menu</span>
+                  </span>
+                  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="size-3 text-slate-500"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </summary>
+                <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-60 border border-[#41443a] bg-[#1a1c17] p-2 shadow-2xl shadow-black/40">
+                  <div className="border-b border-[#34372f] px-3 pb-3 pt-2">
+                    <p className="truncate text-sm font-medium text-[#f0eee5]">{user.full_name || "Account"}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{user.email}</p>
+                  </div>
+                  <Link to="/profile" className="mt-2 flex items-center justify-between px-3 py-2 text-sm text-slate-200 transition hover:bg-white/[0.05] hover:text-lime-200">
+                    Profile & account <span aria-hidden="true" className="text-slate-500">↗</span>
+                  </Link>
+                  <button onClick={logout} className="mt-1 w-full px-3 py-2 text-left text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white">Log out</button>
+                </div>
+              </details>
+            </>
+          )}
+          {!user && <NavLink to="/docs" className={navClass}>Docs</NavLink>}
+        </div>
+      </div>
+    </header>
   );
 }
 
 export default function App() {
-  const [snapshots, setSnapshots] = useState([]);
-  const [error, setError] = useState(null);
-  const [selectedTime, setSelectedTime] = useState(null); // null means live
-  const [rewindSnapshot, setRewindSnapshot] = useState(null);
-
-  const isRewind = selectedTime !== null;
-
-  // Live polling: runs every 5s, paused while rewinding
-  useEffect(() => {
-    if (isRewind) return;
-    async function load() {
-      try {
-        const res = await axios.get(`${API}/snapshots`, { params: { limit: HISTORY } });
-        setSnapshots(res.data);
-        setError(null);
-      } catch {
-        setError("Cannot reach the backend on port 5000. Is it running?");
-      }
-    }
-    load();
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-  }, [isRewind]);
-
-  // Rewind: fetch the snapshot nearest to the slider position
-  useEffect(() => {
-    if (selectedTime === null) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const res = await axios.get(`${API}/snapshot`, { params: { time: selectedTime } });
-        if (!cancelled) setRewindSnapshot(res.data);
-      } catch {
-        if (!cancelled) setError("Could not load that snapshot.");
-      }
-    }, 100);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [selectedTime]);
-
-  function backToLive() {
-    setSelectedTime(null);
-    setRewindSnapshot(null);
-  }
-
-  const first = snapshots[0]?.timestamp;
-  const last = snapshots[snapshots.length - 1]?.timestamp;
-  const latest = snapshots[snapshots.length - 1];
-  const shown = isRewind ? rewindSnapshot ?? latest : latest;
-  const recent = [...snapshots].reverse().slice(0, 15);
-
-  // Highest container count seen = the "normal" number
-  const normalContainers = Math.max(0, ...snapshots.map((s) => s.containers ?? 0));
-  const isDown = (count) => count != null && count < normalContainers;
-
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold">CloudRewind</h1>
-        <p className="text-slate-400 text-sm mb-6">
-          {isRewind ? "Rewind mode: viewing a past moment" : "Live system state, refreshed every 5 seconds"}
-        </p>
-
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-900/40 border border-red-700 p-3 text-red-200">
-            {error}
+    <BrowserRouter>
+      <AuthProvider>
+        <WorkspaceProvider>
+          <div className="min-h-screen text-slate-100">
+            <Header />
+            <Routes>
+              <Route path="/login" element={<AuthPage mode="login" />} />
+              <Route path="/signup" element={<AuthPage mode="signup" />} />
+              <Route path="/invite/:token" element={<InvitePage />} />
+              <Route path="/docs" element={<Docs />} />
+              <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+              <Route path="/workspace" element={<ProtectedRoute><WorkspacePage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+              <Route path="/projects/:projectId" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </div>
-        )}
-
-        {!shown && !error && <p className="text-slate-400">Loading...</p>}
-
-        {shown && (
-          <>
-            {/* Timeline scrubber */}
-            <div className="mb-6 rounded-xl bg-slate-800 p-4 border border-slate-700">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-slate-400">
-                  {isRewind ? (
-                    <>
-                      Snapshot from{" "}
-                      <span className="text-cyan-300 font-semibold">{formatTime(shown.timestamp)}</span>
-                    </>
-                  ) : (
-                    "Drag the slider to rewind"
-                  )}
-                </p>
-                {isRewind && (
-                  <button
-                    onClick={backToLive}
-                    className="rounded-lg bg-cyan-500 px-3 py-1 text-sm font-semibold text-slate-900 hover:bg-cyan-400"
-                  >
-                    Back to live
-                  </button>
-                )}
-              </div>
-              <input
-                type="range"
-                min={first}
-                max={last}
-                step={1000}
-                value={selectedTime ?? last}
-                onChange={(e) => setSelectedTime(Number(e.target.value))}
-                className="w-full accent-cyan-400"
-              />
-              <div className="flex justify-between text-xs text-slate-500 mt-1">
-                <span>{formatTime(first)}</span>
-                <span>{formatTime(last)}</span>
-              </div>
-            </div>
-
-            {/* Metric cards for the live or rewound snapshot */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard label="CPU" value={shown.cpu} unit="%" warn={shown.cpu > 80} />
-              <MetricCard label="Memory" value={shown.memory} unit="%" warn={shown.memory > 80} />
-              <MetricCard label="DB connections" value={shown.db_connections} unit="" warn={shown.db_connections > 40} />
-              <MetricCard label="Network" value={shown.network} unit="KB/s" />
-            </div>
-
-            <div className="mt-4 rounded-xl bg-slate-800 p-4 border border-slate-700">
-              <p className="text-sm text-slate-400 mb-1">Containers running</p>
-              <p className={`text-2xl font-bold ${isDown(shown.containers) ? "text-red-400" : "text-green-400"}`}>
-                {shown.containers ?? "–"}
-              </p>
-            </div>
-
-            {/* CPU and memory chart with the slider position marked */}
-            <h2 className="mt-8 mb-2 text-lg font-semibold">CPU and memory over time</h2>
-            <div className="rounded-xl bg-slate-800 p-4 border border-slate-700">
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={snapshots}>
-                  <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="timestamp"
-                    type="number"
-                    scale="time"
-                    domain={["dataMin", "dataMax"]}
-                    tickFormatter={formatTime}
-                    stroke="#94a3b8"
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis domain={[0, 100]} stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    labelFormatter={formatTime}
-                    contentStyle={{ background: "#1e293b", border: "1px solid #334155" }}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="cpu" name="CPU %" stroke="#38bdf8" dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="memory" name="Memory %" stroke="#f472b6" dot={false} isAnimationActive={false} />
-                  {isRewind && <ReferenceLine x={selectedTime} stroke="#facc15" strokeWidth={2} />}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            <h2 className="mt-8 mb-2 text-lg font-semibold">Recent snapshots</h2>
-            <div className="rounded-xl border border-slate-700 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-800 text-slate-400 text-left">
-                  <tr>
-                    <th className="p-2">Time</th>
-                    <th className="p-2">CPU</th>
-                    <th className="p-2">Memory</th>
-                    <th className="p-2">DB conn</th>
-                    <th className="p-2">Containers</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((s) => {
-                    const down = isDown(s.containers);
-                    const selected = rewindSnapshot && s.id === rewindSnapshot.id;
-                    return (
-                      <tr key={s.id} className={`border-t border-slate-800 ${selected ? "bg-cyan-900/30" : ""}`}>
-                        <td className="p-2">{formatTime(s.timestamp)}</td>
-                        <td className="p-2">{s.cpu}%</td>
-                        <td className="p-2">{s.memory}%</td>
-                        <td className="p-2">{s.db_connections ?? "–"}</td>
-                        <td className={`p-2 ${down ? "text-red-400" : "text-green-400"}`}>
-                          {down ? "restarting" : "all running"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+        </WorkspaceProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

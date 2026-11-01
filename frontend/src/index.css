@@ -1,1 +1,179 @@
 @import "tailwindcss";
+
+@theme {
+  --color-slate-950: #11130f;
+  --color-slate-900: #1a1c17;
+  --color-slate-800: #24271f;
+  --color-slate-700: #34372f;
+  --color-slate-600: #4b4f43;
+  --color-slate-500: #777c70;
+  --color-slate-400: #a2a69a;
+  --color-slate-300: #c4c7ba;
+  --color-slate-200: #e0e1d6;
+  --color-slate-100: #f0eee5;
+  --color-cyan-100: #e6f7ce;
+  --color-cyan-200: #d8f89c;
+  --color-cyan-300: #c7ec76;
+  --color-cyan-400: #a9d35d;
+  --color-cyan-500: #8fb843;
+  --color-cyan-600: #739936;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: #11130f;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #11130f;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  color: #171a12;
+  background: rgb(210 240 120 / 85%);
+}
+
+.cr-page-title {
+  color: #f0eee5;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: clamp(2rem, 4vw, 2.65rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.cr-eyebrow {
+  color: #b8bdab;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.cr-eyebrow span {
+  color: #78806b;
+  padding: 0 0.35rem;
+}
+
+.cr-section-number {
+  color: #b6ef65;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.cr-section-number span {
+  color: #73786a;
+  margin-left: 0.45rem;
+  text-transform: uppercase;
+}
+
+.cr-field-wrap {
+  display: block;
+}
+
+.cr-field-label {
+  color: #d7d7cd;
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 550;
+  margin-bottom: 0.45rem;
+}
+
+.cr-field {
+  background: #181a16;
+  border: 1px solid #41443a;
+  border-radius: 0;
+  color: #f0eee5;
+  display: block;
+  font: inherit;
+  font-size: 0.9rem;
+  min-height: 2.8rem;
+  outline: none;
+  padding: 0.65rem 0.8rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  width: 100%;
+}
+
+.cr-field::placeholder {
+  color: #6f7369;
+}
+
+.cr-field:focus {
+  border-color: #b6ef65;
+  box-shadow: 0 0 0 2px rgb(182 239 101 / 12%);
+}
+
+.cr-field-locked {
+  background: #151712;
+  color: #a4a79d;
+  cursor: not-allowed;
+}
+
+.cr-field-hint {
+  color: #777c70;
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  margin-top: 0.45rem;
+}
+
+.cr-primary-button {
+  background: #c7ec76;
+  border: 1px solid #c7ec76;
+  border-radius: 0;
+  color: #171a12;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-height: 2.65rem;
+  padding: 0.65rem 1.1rem;
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.cr-primary-button:hover:not(:disabled) {
+  background: #d8f89c;
+  border-color: #d8f89c;
+}
+
+.cr-primary-button:focus-visible,
+.cr-text-link:focus-visible {
+  outline: 2px solid #d8f89c;
+  outline-offset: 3px;
+}
+
+.cr-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.cr-text-link {
+  align-items: center;
+  color: #c7ec76;
+  display: inline-flex;
+  gap: 0.4rem;
+  transition: color 140ms ease;
+}
+
+.cr-text-link:hover {
+  color: #e0f7b3;
+}

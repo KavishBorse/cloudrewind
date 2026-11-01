@@ -1,0 +1,22 @@
+# A small "real server" for CloudRewind: an app you can stress, plus the agent watching it.
+# Start:  docker compose -f docker-compose.demo.yml up --build -d
+# Stop:   docker compose -f docker-compose.demo.yml down
+#
+# Needs CLOUDREWIND_KEY in a file named .env next to this file (see the guide).
+
+services:
+  demo-app:
+    build: ./demo-app
+    ports:
+      - "3000:3000"
+    mem_limit: 1500m          # the leak test hits this limit and the container is killed
+    restart: unless-stopped   # Docker brings it back, like a real server would
+
+  agent:
+    build: ./agent
+    environment:
+      CLOUDREWIND_KEY: ${CLOUDREWIND_KEY:?Set CLOUDREWIND_KEY in the .env file}
+    command: ["--url=http://host.docker.internal:5000", "--service=demo-app"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # needed on Linux; harmless on Docker Desktop
+    restart: unless-stopped

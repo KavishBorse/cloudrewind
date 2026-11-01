@@ -1,0 +1,28 @@
+[Unit]
+Description=CloudRewind host and application health agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudrewind-agent
+Group=cloudrewind-agent
+WorkingDirectory=/opt/cloudrewind-agent
+EnvironmentFile=/etc/cloudrewind-agent.env
+ExecStart=/usr/bin/node /opt/cloudrewind-agent/index.js --url=https://your-cloudrewind.example --service=api
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
