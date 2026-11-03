@@ -106,6 +106,23 @@ $env:CLOUDREWIND_KEY = (New-Object System.Net.NetworkCredential("", $secure)).Pa
         </p>
         <p>To include application availability and latency, add a URL for your service's health endpoint:</p>
         <Code>--health-url=https://your-app.example/health</Code>
+        <p>
+          For Docker Compose, add <code>--docker-project=eventease</code> using the project name from <code>docker compose ls</code>.
+          This counts only running containers with that Compose label. The agent's OS account needs Docker socket access,
+          which grants powerful host permissions.
+        </p>
+        <p>
+          Database health is app-specific, so CloudRewind does not guess or store database credentials. Add a small
+          JSON route to the monitored app and point the agent to it. It should return <code>{'{"db_connected":true,"db_connections":4}'}</code>
+          or <code>{'{"db_connected":false}'}</code> when the app cannot connect. For example:
+        </p>
+        <Code>--metrics-url=http://127.0.0.1:5000/cloudrewind/metrics</Code>
+        <p>
+          Keep the endpoint local/private and have it check a strong shared token from <code>CLOUDREWIND_METRICS_TOKEN</code>;
+          the agent sends it in the <code>x-cloudrewind-metrics-token</code> header. Three consecutive database failures
+          create a critical incident. The app route must be implemented for its database driver; the agent cannot discover
+          database connectivity on its own.
+        </p>
       </Step>
 
       <h2 className="text-lg font-semibold mt-8 mb-2">Mark deploys on the timeline (optional)</h2>
@@ -131,8 +148,8 @@ $env:CLOUDREWIND_KEY = (New-Object System.Net.NetworkCredential("", $secure)).Pa
 
       <h2 className="text-lg font-semibold mt-8 mb-2">Investigate and save an incident</h2>
       <p className="text-slate-300 text-sm">
-        CloudRewind flags high CPU or memory, sustained changes from a recent baseline, database connection pressure,
-        and decreases in container count. It groups nearby flags into an incident and links a deploy from the previous
+        CloudRewind flags high CPU or memory, sustained changes from a recent baseline, database connection pressure or
+        three consecutive database connectivity failures, HTTP health failures, and decreases in container count. It groups nearby flags into an incident and links a deploy from the previous
         15 minutes when one exists. The evidence view shows the measurements and the rule that raised each flag.
         Timing is useful context, but it does not prove a deploy caused the incident.
       </p>

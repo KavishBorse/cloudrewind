@@ -43,6 +43,7 @@ function compactMetricsWindow({ incident, window, agentReadings = [], awsReading
       memory: finite(row.memory),
       memory_max: finite(row.memory_max),
       containers: finite(row.containers),
+      db_connected: row.db_connected == null ? null : Number(row.db_connected) === 1,
       db_connections: finite(row.db_connections),
       network: finite(row.network),
       http_status: finite(row.http_status),

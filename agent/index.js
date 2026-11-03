@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // CloudRewind agent v1
-// Reads this machine's CPU and memory (and network on Linux) every few seconds
-// and sends them to your CloudRewind project. Nothing else is read or sent.
+// Reads host CPU and memory (and network on Linux), plus only the explicitly
+// configured health, Docker Compose, and app-metrics sources, then sends readings
+// to CloudRewind. It never reads application files or user traffic.
 // It only makes outbound requests. It opens no ports and accepts no commands.
 
 const os = require("os");
 const fs = require("fs");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const execFileAsync = promisify(execFile);
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const MAX_BUFFER = 120;        // snapshots kept in memory while the server is unreachable
 const MAX_PER_FLUSH = 4;       // snapshots sent per round (the server allows 10 per 10 seconds)
 
@@ -22,7 +26,8 @@ const HELP = `CloudRewind agent ${VERSION}
 
 Usage:
   node index.js [--url=http://localhost:5000] [--service=main] [--instance=host-1] [--interval=5]
-               [--health-url=https://your-app.example/health]
+               [--health-url=https://your-app.example/health] [--docker-project=compose-name]
+               [--metrics-url=http://127.0.0.1:5000/cloudrewind/metrics]
   node index.js --dry-run        Print what would be sent. Sends nothing.
 
 Options:
@@ -32,11 +37,16 @@ Options:
   --interval=N    Seconds between readings (2 to 3600). Default: 5
   --health-url=... Optional HTTP(S) health endpoint to probe from this machine
                   (or set CLOUDREWIND_HEALTH_URL)
+  --docker-project=... Count running containers with this Docker Compose project label
+                       (or set CLOUDREWIND_DOCKER_PROJECT)
+  --metrics-url=... Optional app-owned JSON endpoint for database readings:
+                    {"db_connected":true,"db_connections":4}
+                    (or set CLOUDREWIND_METRICS_URL)
   --dry-run       Show the data, send nothing
   --help          Show this text
 `;
 
-const known = new Set(["url", "service", "instance", "interval", "health-url", "dry-run", "help"]);
+const known = new Set(["url", "service", "instance", "interval", "health-url", "docker-project", "metrics-url", "dry-run", "help"]);
 const opts = {};
 for (const arg of process.argv.slice(2)) {
   if (!arg.startsWith("--")) fail(`Unexpected argument "${arg}". Write options as --name=value. Try --help.`);
@@ -58,6 +68,9 @@ const instance = typeof opts.instance === "string" ? opts.instance : process.env
 const intervalSeconds = opts.interval === undefined ? 5 : Number(opts.interval);
 let url = typeof opts.url === "string" ? opts.url : "http://localhost:5000";
 const healthUrlInput = typeof opts["health-url"] === "string" ? opts["health-url"] : process.env.CLOUDREWIND_HEALTH_URL;
+const dockerProjectInput = typeof opts["docker-project"] === "string" ? opts["docker-project"] : process.env.CLOUDREWIND_DOCKER_PROJECT;
+const metricsUrlInput = typeof opts["metrics-url"] === "string" ? opts["metrics-url"] : process.env.CLOUDREWIND_METRICS_URL;
+const metricsToken = process.env.CLOUDREWIND_METRICS_TOKEN;
 
 if (!dryRun) {
   if (!key) fail("No API key. Set CLOUDREWIND_KEY in the agent environment. (Use --dry-run to try without one.)");
@@ -87,6 +100,26 @@ if (healthUrlInput) {
   }
   if (!["http:", "https:"].includes(healthUrl.protocol) || healthUrl.username || healthUrl.password) {
     fail("--health-url must use HTTP or HTTPS and must not contain embedded credentials.");
+  }
+}
+
+if (dockerProjectInput && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(dockerProjectInput)) {
+  fail("--docker-project may contain only letters, numbers, dots, underscores, and hyphens (1 to 63 characters).");
+}
+const dockerProject = dockerProjectInput || null;
+
+let metricsUrl = null;
+if (metricsUrlInput) {
+  try {
+    metricsUrl = new URL(metricsUrlInput);
+  } catch {
+    fail("--metrics-url must be a valid HTTP(S) URL.");
+  }
+  if (!["http:", "https:"].includes(metricsUrl.protocol) || metricsUrl.username || metricsUrl.password) {
+    fail("--metrics-url must use HTTP or HTTPS and must not contain embedded credentials.");
+  }
+  if (metricsUrl.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(metricsUrl.hostname)) {
+    fail("--metrics-url must use HTTPS unless it points to localhost.");
   }
 }
 
@@ -181,6 +214,84 @@ async function probeHealth() {
   }
 }
 
+let dockerWarningShown = false;
+async function readContainerCount() {
+  try {
+    const { stdout } = await execFileAsync("docker", [
+      "ps",
+      "--filter", `label=com.docker.compose.project=${dockerProject}`,
+      "--filter", "status=running",
+      "--format", "{{.ID}}",
+    ], { timeout: 3000, maxBuffer: 64 * 1024, encoding: "utf8" });
+    dockerWarningShown = false;
+    return stdout.trim() ? stdout.trim().split(/\r?\n/).filter(Boolean).length : 0;
+  } catch {
+    if (!dockerWarningShown) {
+      console.warn("Could not read Docker containers for the configured Compose project; container count is omitted until Docker access works.");
+      dockerWarningShown = true;
+    }
+    return null;
+  }
+}
+
+async function readBoundedJson(response, maxBytes = 16 * 1024) {
+  if (!response.body) throw new Error("empty response body");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error("response is too large");
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+let appMetricsWarningShown = false;
+async function readAppMetrics() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(metricsUrl, {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        "user-agent": `CloudRewind-Agent/${VERSION}`,
+        accept: "application/json",
+        ...(metricsToken ? { "x-cloudrewind-metrics-token": metricsToken } : {}),
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`endpoint returned HTTP ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) throw new Error("endpoint did not return JSON");
+    const body = await readBoundedJson(response);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("JSON must be an object");
+
+    const readings = {};
+    if (typeof body.db_connected === "boolean") readings.db_connected = body.db_connected;
+    if (Number.isInteger(body.db_connections) && body.db_connections >= 0 && body.db_connections <= 100000) {
+      readings.db_connections = body.db_connections;
+    }
+    if (Object.keys(readings).length === 0) throw new Error("JSON had no valid database metrics");
+    appMetricsWarningShown = false;
+    return readings;
+  } catch {
+    if (!appMetricsWarningShown) {
+      console.warn("Could not read valid database metrics from the configured app endpoint; database readings are omitted until it works.");
+      appMetricsWarningShown = true;
+    }
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // ---------- sending ----------
 
 const buffer = [];
@@ -251,7 +362,9 @@ async function flush() {
       }
       if (outcome === "ok") {
         const health = snapshot.http_status == null ? "" : `  HTTP ${snapshot.http_status} ${snapshot.response_ms}ms`;
-        console.log(`${clock(snapshot.timestamp)}  cpu ${snapshot.cpu}%  memory ${snapshot.memory}%${health}  sent`);
+        const containers = snapshot.containers == null ? "" : `  containers ${snapshot.containers}`;
+        const database = snapshot.db_connected == null ? "" : `  DB ${snapshot.db_connected ? "connected" : "disconnected"}${snapshot.db_connections == null ? "" : ` (${snapshot.db_connections})`}`;
+        console.log(`${clock(snapshot.timestamp)}  cpu ${snapshot.cpu}%  memory ${snapshot.memory}%${health}${containers}${database}  sent`);
       }
     }
   } finally {
@@ -270,6 +383,14 @@ async function tick() {
   try {
   const snapshot = measure();
   if (healthUrl) Object.assign(snapshot, await probeHealth());
+  if (dockerProject) {
+    const containers = await readContainerCount();
+    if (containers !== null) snapshot.containers = containers;
+  }
+  if (metricsUrl) {
+    const readings = await readAppMetrics();
+    if (readings) Object.assign(snapshot, readings);
+  }
 
   if (dryRun) {
     console.log(`${clock(snapshot.timestamp)}  would send: ${JSON.stringify(snapshot)}`);
@@ -313,7 +434,7 @@ async function start() {
   console.log(`  Service:  ${service}`);
   console.log(`  Instance: ${instance}`);
   console.log(`  Interval: ${intervalSeconds}s`);
-  console.log(`  Sends:    cpu, memory${previousNet ? ", network" : ""}${healthUrl ? ", HTTP status and latency" : ""}`);
+  console.log(`  Sends:    cpu, memory${previousNet ? ", network" : ""}${healthUrl ? ", HTTP status and latency" : ""}${dockerProject ? `, containers (${dockerProject})` : ""}${metricsUrl ? ", database metrics" : ""}`);
   console.log(`  Health:   ${healthUrl ? "HTTP status and latency only" : "disabled"}`);
   console.log(`  Mode:     ${dryRun ? "DRY RUN: nothing is sent" : "live"}`);
   console.log("Press Ctrl+C to stop.\n");

@@ -41,7 +41,7 @@ db.prepare("INSERT INTO incidents (project_id, start_ts, end_ts, last_flag_ts, c
 
 // ---- make the fake data ----
 const insert = db.prepare(
-  "INSERT INTO snapshots (project_id, service, timestamp, cpu, memory, containers, db_connections, network, http_status, http_ok, response_ms) VALUES (1, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO snapshots (project_id, service, timestamp, cpu, memory, containers, db_connected, db_connections, network, http_status, http_ok, response_ms) VALUES (1, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 let total = 0;
 db.transaction(() => {
@@ -54,7 +54,7 @@ db.transaction(() => {
     const healthFailed = (t >= spikeA && t < spikeA + 30000) || (t >= spikeB && t < spikeB + 30000);
     const httpStatus = healthFailed ? 503 : 200;
     const responseMs = healthFailed ? 1800 : 20 + (k % 30);
-    insert.run(t, cpu, memory, k % 600 >= 595 ? 2 : 3, 10 + (k % 11), 300 + (k % 500), httpStatus, healthFailed ? 0 : 1, responseMs);
+    insert.run(t, cpu, memory, k % 600 >= 595 ? 2 : 3, healthFailed ? 0 : 1, 10 + (k % 11), 300 + (k % 500), httpStatus, healthFailed ? 0 : 1, responseMs);
     total++;
   }
 })();
@@ -109,6 +109,10 @@ const healthAMin = db.prepare("SELECT MIN(http_ok_min) min, MAX(response_ms_max)
 const healthBMin = db.prepare("SELECT MIN(http_ok_min) min, MAX(response_ms_max) max, SUM(probe_count) n FROM snapshot_rollups WHERE bucket_seconds = 43200 AND bucket_start >= ? AND bucket_start < ?").get(spikeB - 12 * HOUR, spikeB + 12 * HOUR);
 check("failed health checks and latency survive in 1-minute rollups", healthAMin.min === 0 && healthAMin.max === 1800 && healthAMin.n > 0, `http_ok_min ${healthAMin.min}, response_ms_max ${healthAMin.max}`);
 check("failed health checks and latency survive in 12-hour rollups", healthBMin.min === 0 && healthBMin.max === 1800 && healthBMin.n > 0, `http_ok_min ${healthBMin.min}, response_ms_max ${healthBMin.max}`);
+const dbStatusA = db.prepare("SELECT MIN(db_connected_min) status FROM snapshot_rollups WHERE bucket_start >= ? AND bucket_start < ?").get(spikeA - MIN, spikeA + MIN);
+const dbStatusB = db.prepare("SELECT MIN(db_connected_min) status FROM snapshot_rollups WHERE bucket_seconds = 43200 AND bucket_start >= ? AND bucket_start < ?").get(spikeB - 12 * HOUR, spikeB + 12 * HOUR);
+check("database outage state survives in 1-minute rollups", dbStatusA.status === 0, `db_connected_min ${dbStatusA.status}`);
+check("database outage state survives in 12-hour rollups", dbStatusB.status === 0, `db_connected_min ${dbStatusB.status}`);
 
 // Reading back through the same code the API uses
 const last30 = await q.getSnapshotRange(1, { from: now - 30 * MIN, to: now, now });
@@ -134,6 +138,7 @@ check("short view of a bookmark: full raw detail", prot.length >= 110 && prot.ev
 
 const nearSpike = await q.getClosestSnapshot(1, spikeA + 10000);
 check("rewind to an old moment answers from a rollup", nearSpike && nearSpike.summary === true && nearSpike.cpu_max >= 95, `cpu_max ${nearSpike?.cpu_max}`);
+check("rewind includes the database outage state", nearSpike?.db_connected === 0, `db_connected ${nearSpike?.db_connected}`);
 const nearBookmark = await q.getClosestSnapshot(1, bookmarkAt);
 check("rewind to a bookmark answers with a raw snapshot", nearBookmark && !nearBookmark.summary, `timestamp offset ${nearBookmark ? nearBookmark.timestamp - bookmarkAt : "none"} ms`);
 const nearNew = await q.getClosestSnapshot(1, now - 10 * MIN);

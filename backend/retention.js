@@ -35,6 +35,7 @@ const UPSERT = `
     mem_max = max(mem_max, excluded.mem_max),
     ${merge("containers_min", "min")},
     ${merge("db_conn_max", "max")},
+    ${merge("db_connected_min", "min")},
     ${merge("net_max", "max")},
     http_ok_min = CASE WHEN http_ok_min IS NULL THEN excluded.http_ok_min WHEN excluded.http_ok_min IS NULL THEN http_ok_min ELSE min(http_ok_min, excluded.http_ok_min) END,
     response_ms_avg = CASE
@@ -47,7 +48,7 @@ const UPSERT = `
     sample_count = sample_count + excluded.sample_count`;
 
 const COLUMNS = `project_id, service, instance, bucket_start, bucket_seconds, cpu_avg, cpu_min, cpu_max,
-  mem_avg, mem_min, mem_max, containers_min, db_conn_max, net_max, sample_count,
+  mem_avg, mem_min, mem_max, containers_min, db_conn_max, db_connected_min, net_max, sample_count,
   http_ok_min, response_ms_avg, response_ms_max, probe_count`;
 
 // Time windows that must stay raw. Rounded outward to whole minutes so a minute is never split.
@@ -99,6 +100,7 @@ const POSTGRES_UPSERT = `
     mem_max = GREATEST(snapshot_rollups.mem_max, EXCLUDED.mem_max),
     ${pgMerge("containers_min", "LEAST")},
     ${pgMerge("db_conn_max", "GREATEST")},
+    ${pgMerge("db_connected_min", "LEAST")},
     ${pgMerge("net_max", "GREATEST")},
     http_ok_min = CASE WHEN snapshot_rollups.http_ok_min IS NULL THEN EXCLUDED.http_ok_min WHEN EXCLUDED.http_ok_min IS NULL THEN snapshot_rollups.http_ok_min ELSE LEAST(snapshot_rollups.http_ok_min, EXCLUDED.http_ok_min) END,
     response_ms_avg = CASE
@@ -155,7 +157,7 @@ async function runPostgresRetention(database, { now = Date.now(), log = console.
        SELECT s.project_id, s.service, s.instance, (s.timestamp / 60000) * 60000, 60,
               AVG(s.cpu), MIN(s.cpu), MAX(s.cpu),
               AVG(s.memory), MIN(s.memory), MAX(s.memory),
-              MIN(s.containers), MAX(s.db_connections), MAX(s.network), COUNT(*),
+              MIN(s.containers), MAX(s.db_connections), MIN(s.db_connected), MAX(s.network), COUNT(*),
               MIN(s.http_ok), AVG(s.response_ms), MAX(s.response_ms), COUNT(s.response_ms)
        FROM snapshots s
        WHERE s.timestamp < ? AND ${notProtected}
@@ -174,7 +176,7 @@ async function runPostgresRetention(database, { now = Date.now(), log = console.
        SELECT project_id, service, instance, (bucket_start / ${BIG_BUCKET_MS}) * ${BIG_BUCKET_MS}, ${BIG_BUCKET_MS / 1000},
               SUM(cpu_avg * sample_count) / SUM(sample_count), MIN(cpu_min), MAX(cpu_max),
               SUM(mem_avg * sample_count) / SUM(sample_count), MIN(mem_min), MAX(mem_max),
-              MIN(containers_min), MAX(db_conn_max), MAX(net_max), SUM(sample_count),
+              MIN(containers_min), MAX(db_conn_max), MIN(db_connected_min), MAX(net_max), SUM(sample_count),
               MIN(http_ok_min), SUM(response_ms_avg * probe_count) / NULLIF(SUM(probe_count), 0),
               MAX(response_ms_max), SUM(probe_count)
        FROM snapshot_rollups
@@ -240,7 +242,7 @@ function runRetention(db, { now = Date.now(), log = console.log, vacuum = true }
          SELECT s.project_id, s.service, s.instance, (s.timestamp / 60000) * 60000, 60,
                 AVG(s.cpu), MIN(s.cpu), MAX(s.cpu),
                 AVG(s.memory), MIN(s.memory), MAX(s.memory),
-                MIN(s.containers), MAX(s.db_connections), MAX(s.network), COUNT(*),
+                MIN(s.containers), MAX(s.db_connections), MIN(s.db_connected), MAX(s.network), COUNT(*),
                 MIN(s.http_ok), AVG(s.response_ms), MAX(s.response_ms), COUNT(s.response_ms)
          FROM snapshots s
          WHERE s.timestamp < ? AND ${notProtected}
@@ -261,7 +263,7 @@ function runRetention(db, { now = Date.now(), log = console.log, vacuum = true }
          SELECT project_id, service, instance, (bucket_start / ${BIG_BUCKET_MS}) * ${BIG_BUCKET_MS}, ${BIG_BUCKET_MS / 1000},
                 SUM(cpu_avg * sample_count) / SUM(sample_count), MIN(cpu_min), MAX(cpu_max),
                 SUM(mem_avg * sample_count) / SUM(sample_count), MIN(mem_min), MAX(mem_max),
-                MIN(containers_min), MAX(db_conn_max), MAX(net_max), SUM(sample_count),
+                MIN(containers_min), MAX(db_conn_max), MIN(db_connected_min), MAX(net_max), SUM(sample_count),
                 MIN(http_ok_min), SUM(response_ms_avg * probe_count) / NULLIF(SUM(probe_count), 0),
                 MAX(response_ms_max), SUM(probe_count)
          FROM snapshot_rollups

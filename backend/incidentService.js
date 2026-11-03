@@ -133,6 +133,36 @@ async function readAnomalies(database, projectId, snapshot) {
     }
   }
 
+  if (snapshot.db_connected != null) {
+    const previous = await database
+      .prepare(
+        `SELECT db_connected FROM snapshots
+         WHERE project_id = ? AND service = ? AND instance = ? AND timestamp < ? AND db_connected IS NOT NULL
+         ORDER BY timestamp DESC LIMIT 2`
+      )
+      .all(projectId, service, instance, snapshot.timestamp);
+    const disconnected = (value) => Number(value) === 0;
+    if (disconnected(snapshot.db_connected) && previous.length === 2 && previous.every((row) => disconnected(row.db_connected))) {
+      anomalies.push({
+        metric: "db_connected",
+        metric_label: "Database connectivity",
+        service,
+        instance,
+        timestamp: snapshot.timestamp,
+        value: 0,
+        peak_value: 0,
+        peak_seen_ts: snapshot.timestamp,
+        first_seen_ts: snapshot.timestamp,
+        last_seen_ts: snapshot.timestamp,
+        baseline_avg: null,
+        baseline_std: null,
+        z_score: null,
+        rule: "three_consecutive_database_failures",
+        severity: "critical",
+      });
+    }
+  }
+
   if (snapshot.containers != null) {
     const previous = await database
       .prepare(
@@ -192,7 +222,8 @@ function makeSummary(incident, evidence) {
   const date = new Date(first.first_seen_ts).toLocaleString();
   const deploy = incident.deploy_event_id ? " A deploy was recorded shortly before the incident; timing alone does not show it caused the issue." : "";
   const sourceName = (item) => item.instance && item.instance !== "default" ? `${item.service} (${item.instance})` : item.service;
-  const metrics = evidence.map((item) => `${item.metric_label} on ${sourceName(item)} (${item.value}${item.peak_value !== item.value ? `, peak ${item.peak_value}` : ""})`).join(", ");
+  const formatValue = (item, value) => item.metric === "db_connected" ? (Number(value) === 1 ? "connected" : "disconnected") : value;
+  const metrics = evidence.map((item) => `${item.metric_label} on ${sourceName(item)} (${formatValue(item, item.value)}${item.peak_value !== item.value ? `, peak ${formatValue(item, item.peak_value)}` : ""})`).join(", ");
   return `The first recorded abnormal reading was ${first.metric_label} on ${sourceName(first)} at ${date}. The incident evidence includes ${metrics}.${deploy} The sequence is temporal evidence, not proof of causation.`;
 }
 

@@ -20,6 +20,7 @@ const payload = z.strictObject({
   cpu: percent,
   memory: percent,
   containers: z.number().int().min(0).max(10000).optional(),
+  db_connected: z.boolean().optional(),
   db_connections: z.number().int().min(0).max(100000).optional(),
   network: z.number().min(0).max(100000000).optional(),
   http_status: z.number().int().min(0).max(599).optional(),

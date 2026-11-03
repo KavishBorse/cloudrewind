@@ -19,6 +19,7 @@ export const METRICS = [
   { key: "network", title: "Network", unit: " KB/s", color: "#a3e635" },
   { key: "response_ms", title: "HTTP response time", unit: " ms", color: "#fb923c" },
   { key: "db_connections", title: "DB connections", unit: "", color: "#fbbf24" },
+  { key: "db_connected", title: "Database connectivity", unit: "", color: "#22d3ee", step: true, status: true },
   { key: "containers", title: "Containers running", unit: "", color: "#34d399", step: true },
 ];
 
@@ -105,6 +106,7 @@ function niceCeil(x) {
 // "auto" fits the data; "fixed" (percent metrics only) is 0 to 100.
 export function yDomain(metric, data, mode, normalContainers) {
   if (metric.percent && mode === "fixed") return [0, 100];
+  if (metric.status) return [0, 1];
   const values = data.flatMap((r) => [r[metric.key], r[`${metric.key}_max`]]).filter((v) => v != null);
   const max = values.length ? Math.max(...values) : 0;
   if (metric.key === "containers") return [0, Math.max(normalContainers, max, 1) + 1];

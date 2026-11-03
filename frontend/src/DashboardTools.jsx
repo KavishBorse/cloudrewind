@@ -183,7 +183,7 @@ export default function DashboardTools({ projectId, selectedTime, latestTime, on
               <button key={streamKey(serviceName, instanceName)} onClick={() => onJump(snapshot.timestamp, serviceName, instanceName)} className="rounded-lg border border-slate-700 bg-slate-900 p-3 text-left hover:border-cyan-500">
                 <p className="font-semibold text-cyan-200">{serviceName}{instanceName !== "default" ? ` · ${instanceName}` : ""}</p>
                 <p className="mt-1 text-xs text-slate-300">CPU {snapshot.cpu ?? "—"}% · Memory {snapshot.memory ?? "—"}%</p>
-                <p className="text-xs text-slate-400">DB {snapshot.db_connections ?? "—"} · Containers {snapshot.containers ?? "—"}</p>
+                <p className="text-xs text-slate-400">DB {snapshot.db_connected == null ? "—" : Number(snapshot.db_connected) === 1 ? "connected" : "disconnected"} · {snapshot.db_connections ?? "—"} connections · Containers {snapshot.containers ?? "—"}</p>
                 {snapshot.timestamp !== cursor && <p className="mt-1 text-[10px] text-slate-500">Nearest reading {when(snapshot.timestamp)}</p>}
               </button>
             ))}

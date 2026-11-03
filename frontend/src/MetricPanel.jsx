@@ -15,6 +15,7 @@ import { computeStats, eventStyle, formatClock, round1 } from "./chartData";
 const SYNC_ID = "cloudrewind-metrics";
 
 const fmt = (v, unit) => (v == null ? "–" : `${round1(v)}${unit}`);
+const statusText = (v) => (v == null ? "–" : Number(v) === 1 ? "Connected" : "Disconnected");
 
 // One metric = one panel: title, stats line, and a chart with its own vertical axis.
 // Clicking the chart calls onPick(timestamp) so the page can rewind to that moment.
@@ -55,12 +56,22 @@ export default function MetricPanel({
           {metric.title}
         </h3>
         <p className="text-xs text-slate-400">
-          {nowLabel} <span className="text-slate-100">{fmt(nowValue, metric.unit)}</span>
-          <span className="mx-2 text-slate-600">|</span>
-          Average <span className="text-slate-100">{fmt(stats?.avg, metric.unit)}</span>
-          <span className="mx-2 text-slate-600">|</span>
-          Max <span className="text-slate-100">{fmt(stats?.max, metric.unit)}</span>
-          {stats && <span> at {formatClock(stats.maxAt, true, longRange)}</span>}
+          {metric.status ? (
+            <>
+              {nowLabel} <span className="text-slate-100">{statusText(nowValue)}</span>
+              <span className="mx-2 text-slate-600">|</span>
+              {stats?.avg === 1 ? "Connected throughout this range" : stats ? "A disconnect occurred in this range" : "No database readings"}
+            </>
+          ) : (
+            <>
+              {nowLabel} <span className="text-slate-100">{fmt(nowValue, metric.unit)}</span>
+              <span className="mx-2 text-slate-600">|</span>
+              Average <span className="text-slate-100">{fmt(stats?.avg, metric.unit)}</span>
+              <span className="mx-2 text-slate-600">|</span>
+              Max <span className="text-slate-100">{fmt(stats?.max, metric.unit)}</span>
+              {stats && <span> at {formatClock(stats.maxAt, true, longRange)}</span>}
+            </>
+          )}
         </p>
       </div>
 
@@ -82,14 +93,14 @@ export default function MetricPanel({
               domain={domain}
               allowDecimals={!metric.step}
               ticks={yTicks}
-              tickFormatter={(v) => round1(v)}
-              width={44}
+              tickFormatter={(v) => (metric.status ? (Number(v) === 1 ? "Connected" : "Disconnected") : round1(v))}
+              width={metric.status ? 100 : 44}
               stroke="#94a3b8"
               tick={{ fontSize: 11 }}
             />
             <Tooltip
               labelFormatter={(ts) => formatClock(ts, true, longRange)}
-              formatter={(v, name) => [fmt(v, metric.unit), name]}
+              formatter={(v, name) => [metric.status ? statusText(v) : fmt(v, metric.unit), name]}
               contentStyle={{ background: "#1e293b", border: "1px solid #334155" }}
             />
             <Line

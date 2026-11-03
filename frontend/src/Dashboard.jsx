@@ -17,12 +17,13 @@ const formatTime = (ts, withDate = false) => (withDate ? new Date(ts).toLocaleSt
 const shortNumber = (n) => (n == null ? "–" : Math.round(n * 10) / 10); // one decimal at most
 
 function MetricCard({ label, value, unit, warn }) {
+  const displayed = typeof value === "number" ? shortNumber(value) : value ?? "–";
   return (
     <div className="border border-[#34372f] bg-slate-900/70 p-4">
       <p className="text-sm text-slate-400">{label}</p>
       <p className={`mt-1 text-3xl font-bold ${warn ? "text-red-400" : "text-white"}`}>
-        {shortNumber(value)}
-        <span className="text-base font-normal text-slate-400 ml-1">{unit}</span>
+        {displayed}
+        {unit && <span className="text-base font-normal text-slate-400 ml-1">{unit}</span>}
       </p>
     </div>
   );
@@ -303,6 +304,13 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <MetricCard label="CPU" value={shown.cpu} unit="%" warn={shown.cpu > 80} />
               <MetricCard label="Memory" value={shown.memory} unit="%" warn={shown.memory > 80} />
+              {has("db_connected") && (
+                <MetricCard
+                  label="Database status"
+                  value={shown.db_connected == null ? "–" : Number(shown.db_connected) === 1 ? "Connected" : "Disconnected"}
+                  warn={shown.db_connected != null && Number(shown.db_connected) === 0}
+                />
+              )}
               {has("db_connections") && (
                 <MetricCard label="DB connections" value={shown.db_connections} unit="" warn={shown.db_connections > 40} />
               )}
@@ -397,13 +405,14 @@ export default function Dashboard() {
             {recent.length > 0 && (
               <>
             <h2 className="mt-8 mb-2 text-lg font-semibold">Recent snapshots</h2>
-            <div className="rounded-xl border border-slate-700 overflow-hidden">
+            <div className="rounded-xl border border-slate-700 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-800 text-slate-400 text-left">
                   <tr>
                     <th className="p-2">Time</th>
                     <th className="p-2">CPU</th>
                     <th className="p-2">Memory</th>
+                    <th className="p-2">DB status</th>
                     <th className="p-2">DB conn</th>
                     <th className="p-2">Containers</th>
                   </tr>
@@ -417,13 +426,16 @@ export default function Dashboard() {
                         <td className="p-2">{formatTime(s.timestamp)}</td>
                         <td className="p-2">{shortNumber(s.cpu)}%</td>
                         <td className="p-2">{shortNumber(s.memory)}%</td>
+                        <td className={`p-2 ${s.db_connected == null ? "text-slate-500" : Number(s.db_connected) === 1 ? "text-green-400" : "text-red-400"}`}>
+                          {s.db_connected == null ? "–" : Number(s.db_connected) === 1 ? "Connected" : "Disconnected"}
+                        </td>
                         <td className="p-2">{s.db_connections ?? "–"}</td>
                         <td
                           className={`p-2 ${
                             s.containers == null ? "text-slate-500" : down ? "text-red-400" : "text-green-400"
                           }`}
                         >
-                          {s.containers == null ? "–" : down ? "restarting" : "all running"}
+                          {s.containers == null ? "–" : `${s.containers} running${down ? " · below recent high" : ""}`}
                         </td>
                       </tr>
                     );

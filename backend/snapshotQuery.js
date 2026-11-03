@@ -1,5 +1,5 @@
 // Reading snapshots back, for live data and for old data that retention has turned into rollups.
-// Rows keep the same field names either way (timestamp, cpu, memory, containers, db_connections, network, response_ms),
+// Rows keep the same field names either way (timestamp, cpu, memory, containers, db_connected, db_connections, network, response_ms),
 // so the charts do not care where the numbers came from. Extra fields describe what the row is:
 //   summary: true      row comes from a rollup (a 1-minute or 12-hour summary)
 //   bucket_seconds     row covers this many seconds (a rollup, or raw data thinned out for a long range)
@@ -46,7 +46,8 @@ function createSnapshotQueries(db) {
       .prepare(
         `SELECT service, instance, CAST(AVG(timestamp) AS BIGINT) AS ts, (timestamp / CAST(? AS BIGINT)) AS b,
                 AVG(cpu) AS cpu, MAX(cpu) AS cpu_max, AVG(memory) AS memory, MAX(memory) AS memory_max,
-                MIN(containers) AS containers, MAX(db_connections) AS db_connections, MAX(network) AS network,
+                MIN(containers) AS containers, MIN(db_connected) AS db_connected,
+                MAX(db_connections) AS db_connections, MAX(network) AS network,
                 NULL AS http_status, MIN(http_ok) AS http_ok, AVG(response_ms) AS response_ms,
                 MAX(response_ms) AS response_ms_max, COUNT(response_ms) AS probe_count,
                 COUNT(*) AS n
@@ -64,6 +65,7 @@ function createSnapshotQueries(db) {
         memory: round1(r.memory),
         memory_max: round1(r.memory_max),
         containers: r.containers,
+        db_connected: r.db_connected,
         db_connections: r.db_connections,
         network: round1(r.network),
         http_status: r.http_status,
@@ -85,7 +87,8 @@ function createSnapshotQueries(db) {
         `SELECT service, instance, CAST(AVG(bucket_start + bucket_seconds * 500) AS BIGINT) AS ts, (bucket_start / CAST(? AS BIGINT)) AS b,
                 SUM(cpu_avg * sample_count) / SUM(sample_count) AS cpu, MIN(cpu_min) AS cpu_min, MAX(cpu_max) AS cpu_max,
                 SUM(mem_avg * sample_count) / SUM(sample_count) AS memory, MIN(mem_min) AS mem_min, MAX(mem_max) AS mem_max,
-                MIN(containers_min) AS containers, MAX(db_conn_max) AS db_connections, MAX(net_max) AS network,
+                MIN(containers_min) AS containers, MIN(db_connected_min) AS db_connected,
+                MAX(db_conn_max) AS db_connections, MAX(net_max) AS network,
                 MIN(http_ok_min) AS http_ok,
                 SUM(response_ms_avg * probe_count) / NULLIF(SUM(probe_count), 0) AS response_ms,
                 MAX(response_ms_max) AS response_ms_max, SUM(probe_count) AS probe_count,
@@ -108,6 +111,7 @@ function createSnapshotQueries(db) {
         memory_min: round1(r.mem_min),
         memory_max: round1(r.mem_max),
         containers: r.containers,
+        db_connected: r.db_connected,
         db_connections: r.db_connections,
         network: round1(r.network),
         http_status: null,
@@ -160,6 +164,7 @@ function createSnapshotQueries(db) {
       memory_min: round1(r.mem_min),
       memory_max: round1(r.mem_max),
       containers: r.containers_min,
+      db_connected: r.db_connected_min,
       db_connections: r.db_conn_max,
       network: round1(r.net_max),
       http_status: null,

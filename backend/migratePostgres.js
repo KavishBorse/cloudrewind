@@ -6,6 +6,7 @@ const MIGRATIONS = [
   { version: "002_workspace_invites", file: "schema.workspace-invites.postgres.sql" },
   { version: "003_incident_summary_source", file: "schema.incident-summary-source.postgres.sql" },
   { version: "004_incident_ai_window", file: "schema.incident-ai-window.postgres.sql" },
+  { version: "005_database_connectivity", file: "schema.database-connectivity.postgres.sql" },
 ];
 
 function splitStatements(source) {

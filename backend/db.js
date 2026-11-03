@@ -192,8 +192,8 @@ if (DATABASE_URL) {
 }
 
 function insertStmtFor(database) { return database.prepare(`
-  INSERT INTO snapshots (project_id, service, instance, timestamp, cpu, memory, containers, db_connections, network, http_status, http_ok, response_ms)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO snapshots (project_id, service, instance, timestamp, cpu, memory, containers, db_connected, db_connections, network, http_status, http_ok, response_ms)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `); }
 
 async function insertSnapshot(projectId, s, database = db) {
@@ -205,6 +205,7 @@ async function insertSnapshot(projectId, s, database = db) {
     s.cpu,
     s.memory,
     s.containers ?? null,
+    s.db_connected == null ? null : Number(s.db_connected),
     s.db_connections ?? null,
     s.network ?? null,
     s.http_status ?? null,

@@ -80,6 +80,7 @@ function runMigrations(db) {
     if (!snapshotColumns.includes("http_status")) db.exec("ALTER TABLE snapshots ADD COLUMN http_status INTEGER");
     if (!snapshotColumns.includes("http_ok")) db.exec("ALTER TABLE snapshots ADD COLUMN http_ok INTEGER");
     if (!snapshotColumns.includes("response_ms")) db.exec("ALTER TABLE snapshots ADD COLUMN response_ms REAL");
+    if (!snapshotColumns.includes("db_connected")) db.exec("ALTER TABLE snapshots ADD COLUMN db_connected INTEGER CHECK(db_connected IN (0, 1))");
 
     const rollupColumns = tableExists(db, "snapshot_rollups") ? columnNames(db, "snapshot_rollups") : [];
     if (!rollupColumns.includes("instance")) db.exec("ALTER TABLE snapshot_rollups ADD COLUMN instance TEXT NOT NULL DEFAULT 'default'");
@@ -87,6 +88,7 @@ function runMigrations(db) {
     if (!rollupColumns.includes("response_ms_avg")) db.exec("ALTER TABLE snapshot_rollups ADD COLUMN response_ms_avg REAL");
     if (!rollupColumns.includes("response_ms_max")) db.exec("ALTER TABLE snapshot_rollups ADD COLUMN response_ms_max REAL");
     if (!rollupColumns.includes("probe_count")) db.exec("ALTER TABLE snapshot_rollups ADD COLUMN probe_count INTEGER NOT NULL DEFAULT 0");
+    if (!rollupColumns.includes("db_connected_min")) db.exec("ALTER TABLE snapshot_rollups ADD COLUMN db_connected_min INTEGER CHECK(db_connected_min IN (0, 1))");
 
     // A service may run on several hosts. Keep each instance's rollups independent.
     const rollupUniqueIndex = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_rollup_unique'").get();

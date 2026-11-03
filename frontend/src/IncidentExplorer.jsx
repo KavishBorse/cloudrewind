@@ -3,6 +3,8 @@ import api from "./api";
 
 const when = (timestamp) => (timestamp ? new Date(timestamp).toLocaleString() : "—");
 const durationLabel = (minutes) => minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
+const incidentMetricLabel = (metric) => metric === "db_connected" ? "Database connectivity" : metric;
+const incidentValue = (item, value) => item.metric === "db_connected" ? (Number(value) === 1 ? "Connected" : "Disconnected") : value;
 
 async function downloadReport(projectId, incidentId) {
   const res = await api.get(`/projects/${projectId}/report`, {
@@ -140,7 +142,7 @@ export default function IncidentExplorer({ projectId, onJump }) {
                 <span className={`mr-2 inline-block rounded px-2 py-0.5 text-[10px] uppercase ${incident.severity === "critical" ? "bg-red-900 text-red-200" : "bg-amber-900 text-amber-200"}`}>
                   {incident.severity}
                 </span>
-                <span className="text-sm font-medium">{incident.trigger_metric || "System anomaly"}</span>
+                <span className="text-sm font-medium">{incidentMetricLabel(incident.trigger_metric || "System anomaly")}</span>
                 <p className="mt-1 text-xs text-slate-400">{when(incident.start_ts)} · {incident.status}</p>
               </button>
             ))}
@@ -226,7 +228,7 @@ export default function IncidentExplorer({ projectId, onJump }) {
                   <div key={`${item.service}-${item.instance || "default"}-${item.metric}`} className="flex flex-wrap items-center justify-between gap-2 rounded bg-slate-800 p-2 text-xs">
                     <span>
                       <span className="font-medium text-slate-100">{item.metric_label}</span>
-                      <span className="text-slate-400"> on {item.service}{item.instance && item.instance !== "default" ? ` · ${item.instance}` : ""}: {item.value}{item.peak_value !== item.value ? ` (peak ${item.peak_value})` : ""}</span>
+                      <span className="text-slate-400"> on {item.service}{item.instance && item.instance !== "default" ? ` · ${item.instance}` : ""}: {incidentValue(item, item.value)}{item.peak_value !== item.value ? ` (peak ${incidentValue(item, item.peak_value)})` : ""}</span>
                       <span className="block text-slate-500">{when(item.first_seen_ts)} · {item.rule.replaceAll("_", " ")}</span>
                     </span>
                     <button onClick={() => onJump(item.first_seen_ts, item.service, item.instance)} className="text-cyan-300 hover:underline">View data</button>
