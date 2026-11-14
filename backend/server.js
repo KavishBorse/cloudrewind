@@ -8,6 +8,10 @@ const { runRetention } = require("./retention");
 const { processSnapshot } = require("./incidentService");
 
 const app = express();
+// Render forwards requests through one trusted edge proxy. This lets
+// express-rate-limit use the client address instead of treating every request
+// as coming from Render's proxy.
+app.set("trust proxy", 1);
 const allowedOrigins = new Set(CORS_ORIGINS);
 app.use(cors({
   origin(origin, callback) {

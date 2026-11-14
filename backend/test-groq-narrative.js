@@ -70,10 +70,29 @@ async function main() {
 
   assert.equal(requestUrl, "https://api.groq.com/openai/v1/chat/completions");
   assert.equal(requestOptions.headers.Authorization, "Bearer mock-api-key");
+  const sentBody = JSON.parse(requestOptions.body);
+  assert.equal(sentBody.max_completion_tokens, 750);
+  assert.equal(sentBody.include_reasoning, false);
   assert.equal(result.possible_causes.length, 1);
   assert.deepEqual(result.possible_causes[0].evidence, [compact.references["agent-1"], compact.references["aws-1"]]);
   assert.equal(result.possible_causes[0].confidence, "moderate");
-  assert.ok(!JSON.stringify(JSON.parse(requestOptions.body)).includes("private-hostname"));
+  assert.ok(!JSON.stringify(sentBody).includes("private-hostname"));
+
+  await assert.rejects(
+    generateGroqAnalysis({
+      incident,
+      window,
+      agentReadings,
+      awsReadings,
+      apiKey: "mock-api-key",
+      fetchImpl: async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: "The request parameters are invalid." } }),
+      }),
+    }),
+    /Groq request failed with HTTP 400: The request parameters are invalid\./,
+  );
 
   console.log("Groq narrative tests passed (mocked provider; no external request made).");
 }
