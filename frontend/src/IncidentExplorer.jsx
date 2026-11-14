@@ -99,6 +99,8 @@ export default function IncidentExplorer({ projectId, onJump }) {
         durationMinutes,
         consentToGroq: true,
       });
+      setAnalysisMode(res.data.mode);
+      if (res.data.analysis_window?.duration_minutes) setDurationMinutes(res.data.analysis_window.duration_minutes);
       setBundle((current) => current && {
         ...current,
         summary_text: res.data.summary,

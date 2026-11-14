@@ -355,6 +355,29 @@ router.post("/:id/incidents/:incidentId/narrative", ownsProject, applyGroqNarrat
   let notice = null;
   let analysisWindow = null;
   let metricCounts = { agent: 0, cloudwatch: 0 };
+  const restorePreviousGroqAnalysis = () => {
+    const previousMinutes = Number(row.summary_window_minutes);
+    const previousEnd = Number(row.summary_window_end_ts);
+    if (row.summary_source !== "groq" || typeof row.summary_text !== "string" || !row.summary_text.trim()
+      || !Number.isInteger(previousMinutes) || previousMinutes < 1 || !Number.isFinite(previousEnd) || previousEnd < 1) {
+      return false;
+    }
+    summary = row.summary_text;
+    outputMode = row.summary_mode === "likely_cause" ? "likely_cause" : "summary";
+    analysisWindow = {
+      from: previousEnd - previousMinutes * 60 * 1000,
+      to: previousEnd,
+      duration_minutes: previousMinutes,
+    };
+    try {
+      const savedCauses = JSON.parse(row.summary_causes_json || "[]");
+      possibleCauses = Array.isArray(savedCauses) ? savedCauses : [];
+    } catch {
+      possibleCauses = [];
+    }
+    source = "groq";
+    return true;
+  };
 
   if (provider === "groq") {
     const windowEnd = Number(row.last_flag_ts || row.end_ts || row.start_ts);
@@ -375,9 +398,11 @@ router.post("/:id/incidents/:incidentId/narrative", ownsProject, applyGroqNarrat
 
     if (!GROQ_API_KEY) {
       notice = "Groq is not configured on this backend, so the evidence-based rule summary is shown instead.";
+      if (restorePreviousGroqAnalysis()) notice = "Groq is not configured on this backend. The last successful Groq analysis is still shown.";
     } else if (agentReadings.length === 0 && awsReadings.length === 0) {
       summary = "No agent or CloudWatch metric readings were recorded in the selected window. Try a longer duration before generating an AI analysis.";
       notice = "There are no agent or CloudWatch readings in this selected window. Try a longer duration.";
+      if (restorePreviousGroqAnalysis()) notice = "There are no readings in this selected window. The last successful Groq analysis is still shown.";
     } else {
       try {
         const analysis = await generateGroqAnalysis({
@@ -394,6 +419,7 @@ router.post("/:id/incidents/:incidentId/narrative", ownsProject, applyGroqNarrat
       } catch (error) {
         console.warn("Groq incident analysis failed:", error.message);
         notice = "Groq could not complete the analysis, so the evidence-based rule summary is shown instead.";
+        if (restorePreviousGroqAnalysis()) notice = "Groq could not complete this attempt. The last successful Groq analysis is still shown.";
       }
     }
   }
@@ -405,7 +431,7 @@ router.post("/:id/incidents/:incidentId/narrative", ownsProject, applyGroqNarrat
     summary,
     source,
     outputMode,
-    source === "groq" ? durationMinutes : null,
+    source === "groq" ? analysisWindow.duration_minutes : null,
     source === "groq" ? analysisWindow.to : null,
     JSON.stringify(possibleCauses),
     row.id
