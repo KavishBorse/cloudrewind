@@ -76,14 +76,28 @@ async function start() {
   // Every stored reading goes through the same incident detector as agent data.
   const demoTimer = setInterval(recordDemoSnapshots, 5000);
 
-  // Retention: every day at 03:00 old raw data becomes 1-minute rollups, then 12-hour rollups.
+  let retentionJob = null;
+  const runRetentionSafely = (reason) => {
+    if (retentionJob) return retentionJob;
+    retentionJob = (async () => {
+      try {
+        console.log(`Running ${reason} retention pass.`);
+        await runRetention(db);
+      } catch (err) {
+        console.error(`Retention ${reason} job failed:`, err);
+      }
+    })().finally(() => { retentionJob = null; });
+    return retentionJob;
+  };
+
+  // Catch up after a restart or idle sleep, then continue the daily schedule.
+  // Old raw data becomes 1-minute rollups, then 12-hour rollups.
+  const startupRetentionTimer = setTimeout(() => { void runRetentionSafely("startup"); }, 0);
+
+  // Retention also runs daily at 03:00.
   // To run it by hand: node run-retention.js
   const retentionTask = cron.schedule("0 3 * * *", async () => {
-    try {
-      await runRetention(db);
-    } catch (err) {
-      console.error("Retention job failed:", err);
-    }
+    await runRetentionSafely("scheduled");
   });
 
   const server = app.listen(PORT, () => console.log(`Backend running on port ${PORT} (${db.driver})`));
@@ -92,7 +106,9 @@ async function start() {
     if (stopping) return;
     stopping = true;
     clearInterval(demoTimer);
+    clearTimeout(startupRetentionTimer);
     retentionTask.stop();
+    if (retentionJob) await retentionJob;
     await new Promise((resolve) => server.close(resolve));
     await db.close();
   };
