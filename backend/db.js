@@ -242,10 +242,10 @@ async function getEvents(projectId, { from, to, limit = 200 } = {}, database = d
 }
 
 // Reading snapshots (raw or rollup) lives in snapshotQuery.js
-const { getSnapshots, getSnapshotRange, getClosestSnapshot } = createSnapshotQueries(db);
+const { getSnapshots, getSnapshotRange, getSnapshotHistory, getClosestSnapshot } = createSnapshotQueries(db);
 
 async function getDemoProjects(database = db) {
   return database.prepare("SELECT id FROM projects WHERE is_demo = 1").all();
 }
 
-module.exports = { db, insertSnapshot, insertEvent, getEvents, getSnapshots, getSnapshotRange, getClosestSnapshot, getDemoProjects };
+module.exports = { db, insertSnapshot, insertEvent, getEvents, getSnapshots, getSnapshotRange, getSnapshotHistory, getClosestSnapshot, getDemoProjects };

@@ -6,6 +6,7 @@ import EventMarkers from "./EventMarkers";
 import IncidentExplorer from "./IncidentExplorer";
 import DashboardTools from "./DashboardTools";
 import ExperimentBench from "./ExperimentBench";
+import SnapshotHistory from "./SnapshotHistory";
 import { RANGES, LONG_RANGE_MS, METRICS, filterRange, buildChart, yDomain, makeTicks, formatClock } from "./chartData";
 
 const HISTORY = 800; // rows asked for. The backend thins out long ranges to about this many.
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [rewindSnapshot, setRewindSnapshot] = useState(null);
   const [rangeMs, setRangeMs] = useState(RANGES[1].ms); // 15 minutes
   const [scaleMode, setScaleMode] = useState("auto"); // "auto" or "fixed" (0 to 100 for percent metrics)
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const isRewind = selectedTime !== null;
 
@@ -204,6 +206,14 @@ export default function Dashboard() {
         <p className="mb-6 mt-2 text-sm text-slate-400">
           {isRewind ? "Rewind mode · viewing a past moment" : project?.is_demo === 1 ? "Sample telemetry · refreshed every 5 seconds" : project?.agent_online ? "Agent connected · host readings refresh every 5 seconds" : "Project timeline · waiting for host readings"}
         </p>
+        <div className="mb-5 flex justify-end">
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="rounded-lg border border-cyan-200/30 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-200/10"
+          >
+            View history
+          </button>
+        </div>
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-900/40 border border-red-700 p-3 text-red-200">
@@ -404,7 +414,7 @@ export default function Dashboard() {
 
             {recent.length > 0 && (
               <>
-            <h2 className="mt-8 mb-2 text-lg font-semibold">Recent snapshots</h2>
+            <h2 className="mt-8 mb-2 text-lg font-semibold">Latest 15 raw snapshots</h2>
             <div className="rounded-xl border border-slate-700 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-800 text-slate-400 text-left">
@@ -447,6 +457,13 @@ export default function Dashboard() {
             )}
           </>
         )}
+        <SnapshotHistory
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          projectId={projectId}
+          service={selectedService}
+          instance={selectedInstance}
+        />
       </div>
     </main>
   );

@@ -150,6 +150,81 @@ function createSnapshotQueries(db) {
     return rows.sort((a, b) => a.timestamp - b.timestamp);
   }
 
+  // A browseable page of every retained raw reading and rollup bucket.
+  // Unlike getSnapshotRange, this endpoint does not thin or average records.
+  async function getSnapshotHistory(projectId, { from, to, service, instance, limit = 50, offset = 0 } = {}) {
+    const rawFilters = ["project_id = ?"];
+    const rawArgs = [projectId];
+    const rollupFilters = ["project_id = ?"];
+    const rollupArgs = [projectId];
+
+    if (service !== undefined) {
+      rawFilters.push("service = ?");
+      rawArgs.push(service);
+      rollupFilters.push("service = ?");
+      rollupArgs.push(service);
+    }
+    if (instance !== undefined) {
+      rawFilters.push("instance = ?");
+      rawArgs.push(instance);
+      rollupFilters.push("instance = ?");
+      rollupArgs.push(instance);
+    }
+    if (from !== undefined) {
+      rawFilters.push("timestamp >= ?");
+      rawArgs.push(from);
+      rollupFilters.push("bucket_start + bucket_seconds * 1000 > ?");
+      rollupArgs.push(from);
+    }
+    if (to !== undefined) {
+      rawFilters.push("timestamp <= ?");
+      rawArgs.push(to);
+      rollupFilters.push("bucket_start <= ?");
+      rollupArgs.push(to);
+    }
+
+    const rawWhere = rawFilters.join(" AND ");
+    const rollupWhere = rollupFilters.join(" AND ");
+    const [rawCount, rollupCount] = await Promise.all([
+      db.prepare(`SELECT COUNT(*) AS n FROM snapshots WHERE ${rawWhere}`).get(...rawArgs),
+      db.prepare(`SELECT COUNT(*) AS n FROM snapshot_rollups WHERE ${rollupWhere}`).get(...rollupArgs),
+    ]);
+
+    const rows = await db.prepare(
+      `SELECT * FROM (
+         SELECT id AS record_id, project_id, service, instance, timestamp,
+                cpu, NULL AS cpu_min, NULL AS cpu_max,
+                memory, NULL AS memory_min, NULL AS memory_max,
+                containers, db_connected, db_connections, network,
+                http_status, http_ok, response_ms, NULL AS response_ms_max,
+                1 AS sample_count, 0 AS bucket_seconds, 'raw' AS kind
+         FROM snapshots WHERE ${rawWhere}
+         UNION ALL
+         SELECT id AS record_id, project_id, service, instance,
+                bucket_start + bucket_seconds * 500 AS timestamp,
+                cpu_avg AS cpu, cpu_min, cpu_max,
+                mem_avg AS memory, mem_min AS memory_min, mem_max AS memory_max,
+                containers_min AS containers, db_connected_min AS db_connected,
+                db_conn_max AS db_connections, net_max AS network,
+                NULL AS http_status, http_ok_min AS http_ok,
+                response_ms_avg AS response_ms, response_ms_max,
+                sample_count, bucket_seconds, 'rollup' AS kind
+         FROM snapshot_rollups WHERE ${rollupWhere}
+       ) AS history
+       ORDER BY timestamp DESC, kind ASC, record_id DESC
+       LIMIT ? OFFSET ?`
+    ).all(...rawArgs, ...rollupArgs, limit, offset);
+
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        timestamp: Number(row.timestamp),
+        summary: row.kind === "rollup",
+      })),
+      total: Number(rawCount.n) + Number(rollupCount.n),
+    };
+  }
+
   function rollupToRow(r) {
     return {
       id: `r${r.id}`,
@@ -207,7 +282,7 @@ function createSnapshotQueries(db) {
     return candidates.sort((a, b) => a.dist - b.dist)[0].row;
   }
 
-  return { getSnapshots, getSnapshotRange, getClosestSnapshot };
+  return { getSnapshots, getSnapshotRange, getSnapshotHistory, getClosestSnapshot };
 }
 
 module.exports = { createSnapshotQueries };

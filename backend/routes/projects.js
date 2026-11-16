@@ -3,7 +3,7 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("node:crypto");
 const { z } = require("zod");
 const { GROQ_API_KEY } = require("../config");
-const { db, getSnapshotRange, getClosestSnapshot, getEvents } = require("../db");
+const { db, getSnapshotRange, getSnapshotHistory, getClosestSnapshot, getEvents } = require("../db");
 const { listProjectStreams } = require("../projectStreams");
 const { generateApiKey } = require("../apiKeys");
 const { requireAuth } = require("../middleware/requireAuth");
@@ -158,6 +158,32 @@ router.get("/:id/snapshots", ownsProject, async (req, res) => {
   }
 
   res.json(await getSnapshotRange(req.project.id, { from, to, service, instance, limit }));
+});
+
+// Paginated browse view of every retained raw reading and rollup bucket.
+router.get("/:id/history", ownsProject, async (req, res) => {
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+  const from = optionalTime(req.query.from);
+  const to = optionalTime(req.query.to);
+  const service = req.query.service;
+  const instance = req.query.instance;
+
+  if (Number.isNaN(from)) return res.status(400).json({ error: "from must be a time in milliseconds" });
+  if (Number.isNaN(to)) return res.status(400).json({ error: "to must be a time in milliseconds" });
+  if (from !== undefined && to !== undefined && from >= to) {
+    return res.status(400).json({ error: "from must be before to" });
+  }
+  if (service !== undefined && !/^[a-zA-Z0-9_-]{1,40}$/.test(String(service))) {
+    return res.status(400).json({ error: "service may only use letters, numbers, - and _ (1 to 40 characters)" });
+  }
+  if (instance !== undefined && !/^[a-zA-Z0-9_.-]{1,80}$/.test(String(instance))) {
+    return res.status(400).json({ error: "instance may only use letters, numbers, dots, - and _ (1 to 80 characters)" });
+  }
+
+  const offset = (page - 1) * limit;
+  const result = await getSnapshotHistory(req.project.id, { from, to, service, instance, limit, offset });
+  res.json({ ...result, page, page_size: limit, has_more: offset + result.rows.length < result.total });
 });
 
 // Events (deploys, config changes, restarts) of one project.
