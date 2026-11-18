@@ -1,7 +1,7 @@
 process.env.JWT_SECRET ||= "local-groq-test-secret";
 
 const assert = require("node:assert/strict");
-const { compactMetricsWindow, generateGroqAnalysis } = require("./groqNarrative");
+const { compactMetricsWindow, generateGroqAnalysis, responseFormatFor, safeGroqDiagnostic } = require("./groqNarrative");
 
 const incident = { severity: "critical", trigger_metric: "cpu", start_ts: 1_800_000_000_000, last_flag_ts: 1_800_000_060_000 };
 const window = { start: 1_800_000_000_000, end: 1_800_000_060_000, durationMinutes: 1 };
@@ -73,10 +73,17 @@ async function main() {
   const sentBody = JSON.parse(requestOptions.body);
   assert.equal(sentBody.max_completion_tokens, 750);
   assert.equal(sentBody.include_reasoning, false);
+  assert.equal(sentBody.reasoning_effort, "low");
+  assert.equal(sentBody.messages.length, 1);
+  assert.equal(sentBody.messages[0].role, "user");
+  assert.equal(sentBody.response_format.type, "json_schema");
+  assert.equal(sentBody.response_format.json_schema.strict, true);
   assert.equal(result.possible_causes.length, 1);
   assert.deepEqual(result.possible_causes[0].evidence, [compact.references["agent-1"], compact.references["aws-1"]]);
   assert.equal(result.possible_causes[0].confidence, "moderate");
   assert.ok(!JSON.stringify(sentBody).includes("private-hostname"));
+  assert.equal(responseFormatFor("another/model").type, "json_object");
+  assert.equal(safeGroqDiagnostic(new Error("Bearer secret gsk_example123")), "Bearer [redacted] [redacted key]");
 
   await assert.rejects(
     generateGroqAnalysis({

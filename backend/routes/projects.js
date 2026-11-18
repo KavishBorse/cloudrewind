@@ -2,7 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const crypto = require("node:crypto");
 const { z } = require("zod");
-const { GROQ_API_KEY } = require("../config");
+const { GROQ_API_KEY, GROQ_MODEL } = require("../config");
 const { db, getSnapshotRange, getSnapshotHistory, getClosestSnapshot, getEvents } = require("../db");
 const { listProjectStreams } = require("../projectStreams");
 const { generateApiKey } = require("../apiKeys");
@@ -10,7 +10,7 @@ const { requireAuth } = require("../middleware/requireAuth");
 const { requireWorkspace, requireWorkspaceRole } = require("../middleware/requireWorkspace");
 const { ownsProject } = require("../middleware/ownsProject");
 const { diffSnapshots, listIncidents, getIncidentBundle, makeSummary, DETECTOR_VERSION } = require("../incidentService");
-const { generateGroqAnalysis } = require("../groqNarrative");
+const { generateGroqAnalysis, safeGroqDiagnostic } = require("../groqNarrative");
 const { triggerDemoScenario, SCENARIOS } = require("../simulator");
 
 const router = express.Router();
@@ -443,9 +443,10 @@ router.post("/:id/incidents/:incidentId/narrative", ownsProject, applyGroqNarrat
         source = "groq";
         outputMode = mode;
       } catch (error) {
-        console.warn("Groq incident analysis failed:", error.message);
-        notice = "Groq could not complete the analysis, so the evidence-based rule summary is shown instead.";
-        if (restorePreviousGroqAnalysis()) notice = "Groq could not complete this attempt. The last successful Groq analysis is still shown.";
+        const diagnostic = safeGroqDiagnostic(error);
+        console.warn(`Groq incident analysis failed (model=${GROQ_MODEL}, mode=${mode}): ${diagnostic}`);
+        notice = `Groq failed: ${diagnostic}. The evidence-based rule summary is shown instead.`;
+        if (restorePreviousGroqAnalysis()) notice = `Groq failed: ${diagnostic}. The last successful Groq analysis is still shown.`;
       }
     }
   }
