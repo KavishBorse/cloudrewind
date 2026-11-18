@@ -71,7 +71,7 @@ async function main() {
   assert.equal(requestUrl, "https://api.groq.com/openai/v1/chat/completions");
   assert.equal(requestOptions.headers.Authorization, "Bearer mock-api-key");
   const sentBody = JSON.parse(requestOptions.body);
-  assert.equal(sentBody.max_completion_tokens, 750);
+  assert.equal(sentBody.max_completion_tokens, 500);
   assert.equal(sentBody.include_reasoning, false);
   assert.equal(sentBody.reasoning_effort, "low");
   assert.equal(sentBody.messages.length, 1);
@@ -84,6 +84,19 @@ async function main() {
   assert.ok(!JSON.stringify(sentBody).includes("private-hostname"));
   assert.equal(responseFormatFor("another/model").type, "json_object");
   assert.equal(safeGroqDiagnostic(new Error("Bearer secret gsk_example123")), "Bearer [redacted] [redacted key]");
+  assert.ok(!Object.hasOwn(compact.payload.agent_metrics[0].metrics, "containers"), "missing metrics are omitted rather than sent as zero");
+
+  const manyAgentReadings = Array.from({ length: 150 }, (_, index) => ({
+    ...agentReadings[0], timestamp: 1_800_000_000_000 + index * 5000, cpu: index,
+  }));
+  const manyAwsReadings = Array.from({ length: 80 }, (_, index) => ({
+    ...awsReadings[0], timestamp: 1_800_000_000_000 + index * 60000, value: index,
+  }));
+  const bounded = compactMetricsWindow({ incident, window, agentReadings: manyAgentReadings, awsReadings: manyAwsReadings });
+  assert.equal(bounded.payload.agent_metrics.length, 36);
+  assert.equal(bounded.payload.aws_cloudwatch_metrics.length, 24);
+  assert.equal(bounded.payload.sampling.agent_readings_available, 150);
+  assert.equal(bounded.payload.sampling.cloudwatch_points_available, 80);
 
   await assert.rejects(
     generateGroqAnalysis({
